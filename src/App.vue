@@ -1,5 +1,5 @@
 <script setup>
-import DouBao from './components/doubao.vue';
+import DouBao from './components/DouBao.vue';
 </script>
 
 <template>

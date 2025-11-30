@@ -1,38 +1,32 @@
 <script setup>
 import { ref, computed } from 'vue';
-import OpenAI from 'openai';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { analyzeContent } from '../services/aiService';
+import '../assets/markdown.css';
 
 marked.setOptions({
     breaks: true,
     gfm: true
 });
 
-const openai = new OpenAI({
-    apiKey: import.meta.env.VITE_ARK_API_KEY,
-    baseURL:'https://ark.cn-beijing.volces.com/api/v3',
-    dangerouslyAllowBrowser: true
-})
-
 const userText = ref('');
 const userImage = ref(null);
-const userImageBase64 = ref(null); // 添加base64存储
+const userImageBase64 = ref(null);
 const isLoading = ref(false);
 const result = ref('');
 
-// Add computed property for markdown rendering
 const renderedResult = computed(() => {
     if (!result.value) return '';
-    return marked(result.value);
+    const html = marked(result.value);
+    return DOMPurify.sanitize(html);
 });
 
 function handleImageUpload(event) {
     const file = event.target.files[0];
     if (file) {
-        // 用于预览显示
         userImage.value = URL.createObjectURL(file);
         
-        // 转换为base64用于API调用
         const reader = new FileReader();
         reader.onload = function(e) {
             userImageBase64.value = e.target.result;
@@ -41,9 +35,18 @@ function handleImageUpload(event) {
     }
 }
 
-async function test() {
+function clearForm() {
+    userText.value = '';
+    userImage.value = null;
+    userImageBase64.value = null;
+    result.value = '';
+    // Reset file input if needed
+    const fileInput = document.getElementById('image-upload');
+    if (fileInput) fileInput.value = '';
+}
+
+async function handleAnalyze() {
     if (!userText.value && !userImageBase64.value) {
-        console.error('请提供文本或图片');
         return;
     }
 
@@ -51,38 +54,8 @@ async function test() {
     result.value = '';
     
     try {
-        console.log('调用豆包接口中...');
-        
-        // 构建消息内容
-        const content = [];
-        if (userImageBase64.value) {
-            content.push({
-                type: 'image_url', 
-                image_url: {
-                    url: userImageBase64.value // 使用base64数据
-                }
-            });
-        }
-        if (userText.value) {
-            content.push({type:'text', text:userText.value});
-        }
-        
-        const completion = await openai.chat.completions.create({
-            messages:[
-                {
-                    role:'user',
-                    content: content
-                }
-            ],
-            model:'doubao-seed-1-6-251015',
-            reasoning_effort:'medium'
-        });
-        
-        result.value = completion.choices[0]?.message?.content || '无响应内容';
-        console.log(completion.choices[0]?.message?.reasoning_content||'');
-        console.log(completion.choices[0]?.message?.content);
+        result.value = await analyzeContent(userText.value, userImageBase64.value);
     } catch (error) {
-        console.error('API调用失败:', error);
         result.value = 'API调用失败，请重试';
     } finally {
         isLoading.value = false;
@@ -107,6 +80,7 @@ async function test() {
                         type="text" 
                         placeholder="请输入您想询问的内容..." 
                         class="text-input"
+                        @keyup.enter="handleAnalyze"
                     />
                 </div>
                 
@@ -130,14 +104,23 @@ async function test() {
                     </div>
                 </div>
                 
-                <button 
-                    @click="test" 
-                    :disabled="(!userText && !userImage) || isLoading"
-                    class="submit-button"
-                >
-                    <span v-if="isLoading" class="loading-spinner"></span>
-                    {{ isLoading ? '分析中...' : '开始分析' }}
-                </button>
+                <div class="button-group">
+                    <button 
+                        @click="clearForm" 
+                        class="clear-button"
+                        :disabled="isLoading"
+                    >
+                        清空
+                    </button>
+                    <button 
+                        @click="handleAnalyze" 
+                        :disabled="(!userText && !userImage) || isLoading"
+                        class="submit-button"
+                    >
+                        <span v-if="isLoading" class="loading-spinner"></span>
+                        {{ isLoading ? '分析中...' : '开始分析' }}
+                    </button>
+                </div>
             </div>
             
             <div class="result-container">
@@ -273,8 +256,13 @@ async function test() {
     object-fit: contain;
 }
 
+.button-group {
+    display: flex;
+    gap: 12px;
+}
+
 .submit-button {
-    width: 100%;
+    flex: 2;
     padding: 12px 24px;
     background: #3b82f6;
     color: white;
@@ -297,6 +285,24 @@ async function test() {
 .submit-button:disabled {
     background: #9ca3af;
     cursor: not-allowed;
+}
+
+.clear-button {
+    flex: 1;
+    padding: 12px 24px;
+    background: #fff;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.clear-button:hover:not(:disabled) {
+    background: #f1f5f9;
+    color: #475569;
 }
 
 .loading-spinner {
@@ -343,103 +349,6 @@ async function test() {
     font-size: 16px;
     line-height: 1.6;
     color: #334155;
-}
-
-/* Markdown content styling */
-.markdown-content :deep(h1),
-.markdown-content :deep(h2),
-.markdown-content :deep(h3),
-.markdown-content :deep(h4),
-.markdown-content :deep(h5),
-.markdown-content :deep(h6) {
-    margin: 16px 0 8px 0;
-    font-weight: 600;
-    color: #1e293b;
-}
-
-.markdown-content :deep(h1) { font-size: 24px; }
-.markdown-content :deep(h2) { font-size: 20px; }
-.markdown-content :deep(h3) { font-size: 18px; }
-.markdown-content :deep(h4) { font-size: 16px; }
-
-.markdown-content :deep(p) {
-    margin: 12px 0;
-    line-height: 1.6;
-}
-
-.markdown-content :deep(ul),
-.markdown-content :deep(ol) {
-    margin: 12px 0;
-    padding-left: 20px;
-}
-
-.markdown-content :deep(li) {
-    margin: 4px 0;
-}
-
-.markdown-content :deep(blockquote) {
-    margin: 16px 0;
-    padding: 12px 16px;
-    border-left: 4px solid #3b82f6;
-    background: #f1f5f9;
-    font-style: italic;
-}
-
-.markdown-content :deep(code) {
-    background: #f1f5f9;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: 'Monaco', 'Menlo', monospace;
-    font-size: 14px;
-    color: #e11d48;
-}
-
-.markdown-content :deep(pre) {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 16px;
-    overflow-x: auto;
-    margin: 16px 0;
-}
-
-.markdown-content :deep(pre code) {
-    background: none;
-    padding: 0;
-    color: #334155;
-}
-
-.markdown-content :deep(table) {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 16px 0;
-}
-
-.markdown-content :deep(th),
-.markdown-content :deep(td) {
-    border: 1px solid #e2e8f0;
-    padding: 8px 12px;
-    text-align: left;
-}
-
-.markdown-content :deep(th) {
-    background: #f8fafc;
-    font-weight: 600;
-}
-
-.markdown-content :deep(strong) {
-    font-weight: 600;
-    color: #1e293b;
-}
-
-.markdown-content :deep(em) {
-    font-style: italic;
-}
-
-.markdown-content :deep(hr) {
-    border: none;
-    border-top: 1px solid #e2e8f0;
-    margin: 24px 0;
 }
 
 @keyframes spin {
