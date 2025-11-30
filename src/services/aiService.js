@@ -41,7 +41,8 @@ export async function analyzeContent(text, imageBase64) {
             "reason": "推荐理由（简短说明为什么选这个）",
             "keywords": "用于电商搜索的关键词（如：落地灯 极简 黄铜）"
         }
-    ]
+    ],
+    "image_prompt": "一段用于AI绘画的英文提示词，描述你建议的软装改造后的房间效果。包含风格、光线、家具材质等细节。例如：A photorealistic living room in Nordic style, with grey fabric sofa, geometric carpet, warm lighting, 4k quality."
 }
 请确保返回的是合法的 JSON 字符串。`
                 },
@@ -65,11 +66,35 @@ export async function analyzeContent(text, imageBase64) {
             // 如果解析失败，返回一个兼容的结构
             return {
                 analysis: contentStr,
-                products: []
+                products: [],
+                image_prompt: ''
             };
         }
     } catch (error) {
         console.error('API调用失败:', error);
         throw error;
+    }
+}
+
+export async function generateDesignImage(prompt) {
+    if (!prompt) return null;
+    
+    try {
+        // 注意：这里需要替换为你实际的豆包文生图模型 Endpoint ID
+        // 如果没有配置环境变量，请直接替换字符串
+        const modelId = "doubao-seedream-4-0-250828"; 
+        
+        const response = await openai.images.generate({
+            model: modelId,
+            prompt: prompt,
+            n: 1,
+            size: "1024x1024", // 豆包模型通常支持的标准尺寸
+        });
+
+        return response.data[0].url;
+    } catch (error) {
+        console.error('图片生成失败:', error);
+        // 不抛出错误，以免影响主流程，只返回 null
+        return null;
     }
 }

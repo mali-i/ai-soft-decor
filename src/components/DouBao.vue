@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { analyzeContent } from '../services/aiService';
+import { analyzeContent, generateDesignImage } from '../services/aiService';
 import '../assets/markdown.css';
 
 marked.setOptions({
@@ -16,6 +16,8 @@ const userImageBase64 = ref(null);
 const isLoading = ref(false);
 const result = ref('');
 const products = ref([]);
+const generatedImageUrl = ref(null);
+const isGeneratingImage = ref(false);
 
 const renderedResult = computed(() => {
     if (!result.value) return '';
@@ -42,6 +44,7 @@ function clearForm() {
     userImageBase64.value = null;
     result.value = '';
     products.value = [];
+    generatedImageUrl.value = null;
     // Reset file input if needed
     const fileInput = document.getElementById('image-upload');
     if (fileInput) fileInput.value = '';
@@ -55,17 +58,35 @@ async function handleAnalyze() {
     isLoading.value = true;
     result.value = '';
     products.value = [];
+    generatedImageUrl.value = null;
     
     try {
         const response = await analyzeContent(userText.value, userImageBase64.value);
         
+        let imagePrompt = '';
+
         if (typeof response === 'object' && response.analysis) {
             result.value = response.analysis;
             products.value = response.products || [];
+            imagePrompt = response.image_prompt;
         } else {
             // Fallback for string response or error structure
             result.value = typeof response === 'string' ? response : JSON.stringify(response);
         }
+
+        // 如果有图片提示词，开始生成图片
+        if (imagePrompt) {
+            isGeneratingImage.value = true;
+            // 不阻塞主流程，异步生成图片
+            generateDesignImage(imagePrompt).then(url => {
+                if (url) {
+                    generatedImageUrl.value = url;
+                }
+            }).finally(() => {
+                isGeneratingImage.value = false;
+            });
+        }
+
     } catch (error) {
         result.value = 'API调用失败，请重试';
     } finally {
@@ -150,6 +171,19 @@ function getSearchLink(keyword) {
                 </div>
                 
                 <div v-if="result" class="result-content markdown-content" v-html="renderedResult"></div>
+
+                <!-- Generated Image Section -->
+                <div v-if="isGeneratingImage || generatedImageUrl" class="generated-image-section">
+                    <h4 class="section-title">效果预览</h4>
+                    <div v-if="isGeneratingImage" class="image-loading">
+                        <div class="loading-spinner"></div>
+                        <span>正在生成设计效果图...</span>
+                    </div>
+                    <div v-if="generatedImageUrl" class="generated-image-container">
+                        <img :src="generatedImageUrl" alt="AI生成的设计效果图" class="generated-image" />
+                        <a :href="generatedImageUrl" download="design-preview.png" target="_blank" class="download-link">下载图片</a>
+                    </div>
+                </div>
 
                 <!-- Product Recommendations Section -->
                 <div v-if="products.length > 0" class="products-section">
@@ -451,6 +485,56 @@ function getSearchLink(keyword) {
 .buy-button:hover {
     background: #e2e8f0;
     color: #1e293b;
+}
+
+/* Generated Image Section */
+.generated-image-section {
+    margin-top: 32px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 24px;
+}
+
+.section-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 16px 0;
+}
+
+.image-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 40px 0;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 8px;
+}
+
+.generated-image-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.generated-image {
+    width: 100%;
+    max-width: 600px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.download-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.download-link:hover {
+    text-decoration: underline;
 }
 
 @keyframes spin {
