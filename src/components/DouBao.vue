@@ -15,6 +15,7 @@ const userImage = ref(null);
 const userImageBase64 = ref(null);
 const isLoading = ref(false);
 const result = ref('');
+const products = ref([]);
 
 const renderedResult = computed(() => {
     if (!result.value) return '';
@@ -40,6 +41,7 @@ function clearForm() {
     userImage.value = null;
     userImageBase64.value = null;
     result.value = '';
+    products.value = [];
     // Reset file input if needed
     const fileInput = document.getElementById('image-upload');
     if (fileInput) fileInput.value = '';
@@ -52,14 +54,28 @@ async function handleAnalyze() {
 
     isLoading.value = true;
     result.value = '';
+    products.value = [];
     
     try {
-        result.value = await analyzeContent(userText.value, userImageBase64.value);
+        const response = await analyzeContent(userText.value, userImageBase64.value);
+        
+        if (typeof response === 'object' && response.analysis) {
+            result.value = response.analysis;
+            products.value = response.products || [];
+        } else {
+            // Fallback for string response or error structure
+            result.value = typeof response === 'string' ? response : JSON.stringify(response);
+        }
     } catch (error) {
         result.value = 'API调用失败，请重试';
     } finally {
         isLoading.value = false;
     }
+}
+
+function getSearchLink(keyword) {
+    // Example: Search on Taobao (you can change this to any e-commerce site)
+    return `https://s.taobao.com/search?q=${encodeURIComponent(keyword)}`;
 }
 </script>
 
@@ -132,7 +148,24 @@ async function handleAnalyze() {
                     <div class="loading-spinner"></div>
                     <span>AI 正在分析中，请稍候...</span>
                 </div>
+                
                 <div v-if="result" class="result-content markdown-content" v-html="renderedResult"></div>
+
+                <!-- Product Recommendations Section -->
+                <div v-if="products.length > 0" class="products-section">
+                    <h4 class="products-title">推荐软装好物</h4>
+                    <div class="products-grid">
+                        <div v-for="(product, index) in products" :key="index" class="product-card">
+                            <div class="product-info">
+                                <h5 class="product-name">{{ product.name }}</h5>
+                                <p class="product-reason">{{ product.reason }}</p>
+                            </div>
+                            <a :href="getSearchLink(product.keywords)" target="_blank" class="buy-button">
+                                🔍 搜索同款
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -349,6 +382,75 @@ async function handleAnalyze() {
     font-size: 16px;
     line-height: 1.6;
     color: #334155;
+}
+
+/* Products Section Styles */
+.products-section {
+    margin-top: 32px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 24px;
+}
+
+.products-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 16px 0;
+}
+
+.products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.product-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.product-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.product-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+}
+
+.product-reason {
+    font-size: 14px;
+    color: #64748b;
+    margin: 0 0 16px 0;
+    line-height: 1.4;
+}
+
+.buy-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    background: #f1f5f9;
+    color: #475569;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.buy-button:hover {
+    background: #e2e8f0;
+    color: #1e293b;
 }
 
 @keyframes spin {
